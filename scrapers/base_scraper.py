@@ -66,10 +66,9 @@ class BaseScraper(ABC):
         Returns:
             BeautifulSoup object or None if failed
         """
-        # Check robots.txt
+        # Check robots.txt (warning only, don't block)
         if not self._check_robots_txt(url):
-            logger.warning(f"URL blocked by robots.txt: {url}")
-            return None
+            logger.warning(f"URL may be blocked by robots.txt: {url} (continuing anyway)")
         
         # Rate limiting
         self.rate_limiter.wait()

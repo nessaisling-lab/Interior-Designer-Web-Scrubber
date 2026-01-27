@@ -59,10 +59,37 @@ def scrape_all_sources(
             # Check if this source has its own output file configured
             source_output_file = source_config.get('output_file')
             if source_output_file and designers:
-                # Export this source to its own file
-                exporter = CSVExporter(source_output_file)
-                exporter.export(designers, append=False, deduplicate=True)
-                logger.info(f"Exported {len(designers)} designers from {source_name} to {source_output_file}")
+                # Check if we have per-page results (from pagination)
+                if hasattr(scraper, '_page_results') and scraper._page_results:
+                    # Export each page to a separate file
+                    import os
+                    base_output_path = source_output_file
+                    base_name = os.path.splitext(base_output_path)[0]
+                    base_ext = os.path.splitext(base_output_path)[1] or '.csv'
+                    
+                    for page_data in scraper._page_results:
+                        page_num = page_data['page_num']
+                        page_designers = page_data['designers']
+                        page_output_file = f"{base_name}_page{page_num}{base_ext}"
+                        
+                        if page_designers:
+                            exporter = CSVExporter(page_output_file)
+                            exporter.export(page_designers, append=False, deduplicate=True)
+                            logger.info(f"Exported {len(page_designers)} designers from page {page_num} to {page_output_file}")
+                        else:
+                            logger.warning(f"No designers found on page {page_num}")
+                    
+                    # Also export combined results to main file
+                    exporter = CSVExporter(base_output_path)
+                    exporter.export(designers, append=False, deduplicate=True)
+                    logger.info(f"Exported {len(designers)} total designers (combined) to {base_output_path}")
+                else:
+                    # Single file export (no pagination or single page)
+                    exporter = CSVExporter(source_output_file)
+                    import os
+                    file_exists = os.path.exists(source_output_file)
+                    exporter.export(designers, append=file_exists, deduplicate=True)
+                    logger.info(f"Exported {len(designers)} designers from {source_name} to {source_output_file} ({'appended' if file_exists else 'created new'})")
             else:
                 # Add to combined list for main output file
                 all_designers.extend(designers)

@@ -74,20 +74,65 @@ logger = get_logger(__name__)
 class SeleniumHelper:
     """Helper class for Selenium-based web scraping."""
     
-    def __init__(self, headless: bool = True, wait_time: int = 10):
+    def __init__(
+        self,
+        headless: bool = True,
+        wait_time: int = 10,
+        stealth: bool = False,
+        use_undetected: bool = False,
+        proxy: Optional[str] = None,
+    ):
         """
         Initialize Selenium helper.
         
         Args:
             headless: Run browser in headless mode
             wait_time: Default wait time for elements in seconds
+            stealth: Use Chrome options to reduce automation detection (headless-like detection)
+            use_undetected: Use undetected-chromedriver to evade bot detection (bypasses Cloudflare etc.)
+            proxy: Optional proxy URL (e.g. "http://host:port" or "socks5://host:port") for different IP
         """
         self.headless = headless
         self.wait_time = wait_time
+        self.stealth = stealth
+        self.use_undetected = use_undetected
+        self.proxy = proxy
         self.driver = None
+    
+    def _create_undetected_driver(self) -> webdriver.Chrome:
+        """Create Chrome via undetected-chromedriver to evade bot/block pages."""
+        try:
+            import undetected_chromedriver as uc
+        except ImportError:
+            logger.error(
+                "undetected-chromedriver not installed. Install with: pip install undetected-chromedriver"
+            )
+            raise ImportError(
+                "undetected-chromedriver is required when use_undetected=True. "
+                "Run: pip install undetected-chromedriver"
+            )
+        logger.info("Using undetected-chromedriver to evade bot detection")
+        opts = uc.ChromeOptions()
+        if self.proxy:
+            opts.add_argument(f"--proxy-server={self.proxy}")
+            logger.info(f"Using proxy: {self.proxy}")
+        driver = uc.Chrome(options=opts, headless=self.headless, use_subprocess=False)
+        driver.implicitly_wait(self.wait_time)
+        logger.info("Successfully created Chrome driver with undetected-chromedriver")
+        return driver
     
     def _create_driver(self) -> webdriver.Chrome:
         """Create and configure Chrome WebDriver."""
+        if self.use_undetected:
+            try:
+                return self._create_undetected_driver()
+            except ImportError as e:
+                logger.warning(
+                    "undetected-chromedriver not available (%s). Using regular Chrome. "
+                    "Install in the same Python you run with: pip install undetected-chromedriver",
+                    e,
+                )
+                # fall through to regular Chrome
         # Fix webdriver_manager timeout patching issue BEFORE creating driver
         try:
             import urllib3.util.connection as urllib3_conn
@@ -115,12 +160,21 @@ class SeleniumHelper:
         if self.headless:
             chrome_options.add_argument('--headless')
         
+        # Stealth: reduce automation detection (sites that block "headless" or automation)
+        if self.stealth:
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+        
         # Additional options for better compatibility
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--window-size=1920,1080')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        if self.proxy:
+            chrome_options.add_argument(f'--proxy-server={self.proxy}')
+            logger.info(f"Using proxy: {self.proxy}")
         
         # Disable images and CSS for faster loading (optional)
         # prefs = {
@@ -366,7 +420,7 @@ class SeleniumHelper:
             logger.info("Make sure Chrome browser is installed. ChromeDriver will be downloaded automatically.")
             raise
     
-    def get_page_source(self, url: str, wait_for_selector: Optional[str] = None, wait_time: Optional[int] = None) -> Optional[str]:
+    def get_page_source(self, url: str, wait_for_selector: Optional[str] = None, wait_time: Optional[int] = None, timeout: Optional[int] = None) -> Optional[str]:
         """
         Fetch page source after JavaScript execution.
         
@@ -374,6 +428,7 @@ class SeleniumHelper:
             url: URL to fetch
             wait_for_selector: Optional CSS selector to wait for before returning page source
             wait_time: Optional custom wait time
+            timeout: Optional timeout override (uses wait_time if not provided)
             
         Returns:
             Page source HTML as string or None if failed
@@ -391,14 +446,14 @@ class SeleniumHelper:
             
             # Wait for specific element if selector provided
             if wait_for_selector:
-                wait = wait_time or self.wait_time
+                wait = timeout or wait_time or self.wait_time
                 try:
                     WebDriverWait(self.driver, wait).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, wait_for_selector))
                     )
                     logger.debug(f"Found element with selector: {wait_for_selector}")
                 except TimeoutException:
-                    logger.warning(f"Timeout waiting for selector: {wait_for_selector}")
+                    logger.warning(f"Timeout waiting for selector: {wait_for_selector}, continuing anyway")
                     # Continue anyway - page might still have content
             
             # Additional wait for JavaScript to finish
@@ -413,7 +468,7 @@ class SeleniumHelper:
             logger.error(f"Unexpected error in Selenium: {e}")
             return None
     
-    def get_soup(self, url: str, wait_for_selector: Optional[str] = None, wait_time: Optional[int] = None) -> Optional[BeautifulSoup]:
+    def get_soup(self, url: str, wait_for_selector: Optional[str] = None, wait_time: Optional[int] = None, timeout: Optional[int] = None) -> Optional[BeautifulSoup]:
         """
         Get BeautifulSoup object from JavaScript-rendered page.
         
@@ -425,7 +480,7 @@ class SeleniumHelper:
         Returns:
             BeautifulSoup object or None if failed
         """
-        page_source = self.get_page_source(url, wait_for_selector, wait_time)
+        page_source = self.get_page_source(url, wait_for_selector, wait_time, timeout)
         if page_source:
             return BeautifulSoup(page_source, 'html.parser')
         return None

@@ -182,6 +182,100 @@ WEBSITE_CONFIGS = {
             ],
         }
     },
+    'rethinkingthefuture': {
+        'base_url': 'https://www.re-thinkingthefuture.com',
+        'list_url': 'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/',
+        'rate_limit': 2.0,
+        'output_file': 'output/rethinkingthefuture_results.csv',  # Custom output file
+        'requires_js': True,  # This site blocks automated requests, use Selenium
+        'headless': False,  # Run visible browser to reduce block detection
+        'stealth': True,  # Use Chrome flags to look less like automation
+        'use_undetected': True,  # Use undetected-chromedriver to evade bot/block pages
+        # 'proxy': 'http://host:port',  # Optional: use a proxy for different IP (no VPN); e.g. free/paid proxy
+        'pagination': {
+            'enabled': True,
+            'start_page': 1,
+            'end_page': 1,  # Site blocks pages 2–10; set to 10 and use delay/stealth to try more
+            'url_pattern': '{base_url}/{page}/',  # Pattern: base_url/2/, base_url/3/, etc.
+            'first_page_no_suffix': True,  # Page 1 has no /1/ suffix
+            'delay_between_pages': 30,  # Seconds to wait before loading next page (reduce blocking)
+        },
+        'selectors': {
+            # Look for numbered list entries - similar to bocadolobo pattern
+            'listing': [
+                'article',
+                'div[class*="entry"]',
+                'div[class*="post"]',
+                'div[class*="firm"]',
+                'div[class*="architect"]',
+                'div[class*="company"]',
+                'section',
+                'li',
+                'div[class*="item"]',
+                'div[class*="listing"]',
+                'div[class*="card"]',
+            ],
+            # Names are likely in headings (numbered format like "1. Firm Name")
+            'name': [
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                '[class*="title"]',
+                '[class*="name"]',
+                '[class*="firm-name"]',
+                '[class*="architect-name"]',
+                '[class*="company-name"]',
+                'strong',
+                'a[class*="title"]',
+                'h2 a', 'h3 a', 'h4 a',
+            ],
+            # Look for website links (external links to firm websites)
+            'website': [
+                'a[href^="http"]',
+                'a[href*="www"]',
+                'a[class*="website"]',
+                'a[class*="url"]',
+                'a[class*="link"]',
+                '[class*="website"] a',
+                '[class*="url"] a',
+            ],
+            # Contact information - may be in paragraphs or specific sections
+            'phone': [
+                'a[href^="tel:"]',
+                '[class*="phone"]',
+                '[class*="tel"]',
+                '[class*="contact"]',
+                '[data-phone]',
+            ],
+            'email': [
+                'a[href^="mailto:"]',
+                '[class*="email"]',
+                '[class*="contact"]',
+                '[data-email]',
+            ],
+            'address': [
+                '[class*="address"]',
+                '[class*="location"]',
+                '[class*="street"]',
+                '[class*="office"]',
+            ],
+            'city': [
+                '[class*="city"]',
+            ],
+            'state': [
+                '[class*="state"]',
+            ],
+            'zip_code': [
+                '[class*="zip"]',
+                '[class*="postal"]',
+            ],
+            'specialty': [
+                '[class*="specialty"]',
+                '[class*="description"]',
+                '[class*="content"]',
+                '[class*="about"]',
+                'p',
+            ],
+        }
+    },
     # Add more website configurations here
     # Example template:
     # 'website_name': {
