@@ -1,7 +1,10 @@
 """Scraper for business directories like Yelp, Houzz, etc."""
 
+import re
 import time
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
+from urllib.parse import urlparse
+
 from bs4 import BeautifulSoup
 
 from .base_scraper import BaseScraper
@@ -290,6 +293,17 @@ class DirectoryScraper(BaseScraper):
                     'architects in new york | top 100',  # Main page title
                     'top 100 architecture firms',
                     'top 50 architecture',
+                    'top 21 ',  # Inven list-title and similar
+                    'residential construction insights',
+                    'want to find more', 'more articles',
+                    'stop searching', 'find what others miss',
+                    '28 new york builders', 'new york builders and contractors you need',  # AD PRO Directory article title
+                    'get ad-approved', 'join the ad pro', 'more great stories',
+                    'are you looking for a design',
+                    '35 best architecture', 'these architecture firms are leading',  # Architizer list article
+                    'how are these architecture firms ranked', 'without further ado',
+                    'other architecture firms to consider', 'why should i trust architizer',
+                    'a guide to project awards', 'related content',
                     'page ', 'share on', 'share with',
                     'related posts', 'related articles',
                     'author:', 'prev post', 'next post',
@@ -340,8 +354,8 @@ class DirectoryScraper(BaseScraper):
             
             if h2_listings:
                 logger.info(f"Extracted {len(h2_listings)} firms from H2 headings")
-                # Always prefer H2 listings if we found any (they're more reliable for paginated pages)
-                if h2_listings:
+                # Prefer H2 only when we have no listings yet or H2 gives more (avoids overwriting 21 numbered items with 6 section titles)
+                if not listings or len(h2_listings) > len(listings):
                     listings = h2_listings
         
         # Also try text-based extraction using "Website:" patterns
@@ -519,6 +533,81 @@ class DirectoryScraper(BaseScraper):
                 return True
         return False
     
+    def _is_internal_profile_url(self, url: str) -> bool:
+        """True if url is a directory profile/detail page (same domain as list), not the firm's own homepage."""
+        if not url or not url.startswith('http'):
+            return False
+        try:
+            parsed = urlparse(url)
+            path = (parsed.path or '').lower()
+            # Known directory profile path patterns
+            if '/firms/' in path or '/brand/' in path or '/directory/profile' in path or '/adpro/directory/profile' in path:
+                return True
+            list_domain = urlparse(self.base_url).netloc.lower().replace('www.', '')
+            link_domain = parsed.netloc.lower().replace('www.', '')
+            return link_domain == list_domain
+        except Exception:
+            return False
+    
+    def _resolve_homepage_from_profile(self, profile_url: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Fetch a directory profile page and extract the firm's actual homepage URL (and email if present).
+        Returns (homepage_url, email) or (None, None) / (None, email) if not found.
+        """
+        try:
+            if self.requires_js and self.selenium_helper is None:
+                headless = self.config.get('headless', True)
+                stealth = self.config.get('stealth', False)
+                use_undetected = self.config.get('use_undetected', False)
+                proxy = self.config.get('proxy')
+                self.selenium_helper = SeleniumHelper(
+                    headless=headless, wait_time=15, stealth=stealth,
+                    use_undetected=use_undetected, proxy=proxy
+                )
+            # Use body-only wait for profile pages (they don't have list-page selectors like "article")
+            if self.requires_js:
+                soup = self.selenium_helper.get_soup(profile_url, wait_for_selector='body', timeout=10)
+            else:
+                soup = self._fetch_page(profile_url)
+            if not soup:
+                return (None, None)
+            profile_domain = urlparse(profile_url).netloc.lower().replace('www.', '')
+            # Exclude same site: exact match or subdomains (e.g. enter.architizer.com when profile is architizer.com)
+            def is_same_site(host: str) -> bool:
+                h = host.replace('www.', '')
+                return h == profile_domain or h.endswith('.' + profile_domain)
+            social_hosts = ('facebook.com', 'twitter.com', 'x.com', 'instagram.com', 'linkedin.com', 'youtube.com', 'pinterest.com', 'vimeo.com')
+            homepage = None
+            candidates = []  # (href, is_preferred)
+            for a in soup.find_all('a', href=True):
+                href = (a.get('href') or '').strip()
+                if not href.startswith('http'):
+                    continue
+                host = urlparse(href).netloc.lower().replace('www.', '')
+                if is_same_site(host):
+                    continue
+                if any(s in host for s in social_hosts):
+                    continue
+                text = (a.get_text(strip=True) + ' ' + (a.get('aria-label') or '')).lower()
+                preferred = any(w in text for w in ('website', 'visit', 'site', 'homepage', 'official', 'www', 'home'))
+                candidates.append((href, preferred))
+            for href, preferred in candidates:
+                if preferred:
+                    homepage = href
+                    break
+            if not homepage and candidates:
+                homepage = candidates[0][0]
+            email = None
+            if soup:
+                text = soup.get_text()
+                emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text)
+                filtered = [e for e in emails if not any(x in e.lower() for x in ['example.com', 'noreply', 'no-reply', 'sentry', 'wix.com', 'architizer.com', 'archello.com', 'architecturaldigest.com'])]
+                email = filtered[0] if filtered else None
+            return (homepage, email)
+        except Exception as e:
+            logger.debug(f"Could not resolve homepage from profile {profile_url}: {e}")
+            return (None, None)
+    
     def _parse_listing(self, listing_soup: BeautifulSoup, source_url: str) -> Optional[Designer]:
         """Parse a single listing from the directory."""
         try:
@@ -572,60 +661,61 @@ class DirectoryScraper(BaseScraper):
             if not name or len(name) < 2:  # Name must be at least 2 characters (allow abbreviations)
                 return None
             
-            # Extract website/URL - try multiple methods
+            # Extract website/URL - prefer actual firm homepages over directory profile links
             website = None
             website_selectors = self.selectors.get('website', '')
             
             if isinstance(website_selectors, list):
+                internal_fallback = []
                 for selector in website_selectors:
-                    if selector:  # Ensure selector is not empty
-                        website = self._extract_attr(listing_soup, str(selector), 'href')
-                        if website:
-                            break
+                    if selector:
+                        w = self._extract_attr(listing_soup, str(selector), 'href')
+                        if w and w.startswith('http'):
+                            if not self._is_internal_profile_url(w):
+                                website = w
+                                break
+                            internal_fallback.append(w)
+                if not website and internal_fallback:
+                    website = internal_fallback[0]  # profile URL; resolve to real homepage below
             elif website_selectors:
-                website = self._extract_attr(listing_soup, str(website_selectors), 'href')
+                w = self._extract_attr(listing_soup, str(website_selectors), 'href')
+                if w:
+                    website = w  # resolve to real homepage below if internal
             
             # Also try to find links in the listing that might be designer websites
             if not website:
                 links = listing_soup.find_all('a', href=True)
-                potential_websites = []
+                external, internal = [], []
                 for link in links:
                     href = link.get('href', '')
                     text = link.get_text(strip=True).lower()
                     href_lower = href.lower()
-                    
-                    # Skip social media and internal links
                     if any(x in href_lower for x in ['instagram', 'facebook', 'twitter', 'linkedin', 'pinterest', 'youtube']):
                         continue
                     if 'bocadolobo' in href_lower or href_lower.startswith('/'):
                         continue
-                    
-                    # Look for external HTTP links
                     if href.startswith('http'):
-                        # Prioritize links that seem like designer websites
-                        if any(word in text for word in ['website', 'visit', 'www']):
-                            potential_websites.insert(0, href)  # Higher priority
+                        preferred = any(word in text for word in ['website', 'visit', 'www'])
+                        if self._is_internal_profile_url(href):
+                            internal.append((href, preferred))
                         else:
-                            potential_websites.append(href)
-                
-                if potential_websites:
-                    website = potential_websites[0]
+                            external.append((href, preferred))
+                # Prefer external; among those, prefer "website"/"visit"/"www" text
+                for href, preferred in sorted(external, key=lambda x: (not x[1], x[0])):
+                    website = href
+                    break
+                if not website and internal:
+                    website = internal[0][0]
             
             # Also look for "Website:" pattern in text (common in list pages like re-thinkingthefuture)
             if not website:
                 listing_text = listing_soup.get_text()
-                import re
-                # Look for "Website: www.example.com" or "Website: example.com"
                 website_match = re.search(r'Website:\s*(?:www\.)?([^\s\n,]+)', listing_text, re.IGNORECASE)
                 if website_match:
                     website = website_match.group(1).strip()
-                    # Remove trailing punctuation
                     website = re.sub(r'[.,;:]+$', '', website)
                     if not website.startswith('http'):
-                        if not website.startswith('www.'):
-                            website = 'http://www.' + website
-                        else:
-                            website = 'http://' + website
+                        website = ('http://www.' + website) if not website.startswith('www.') else ('http://' + website)
             
             # Try to extract website from image source links (sometimes images link to designer sites)
             if not website:
@@ -635,12 +725,24 @@ class DirectoryScraper(BaseScraper):
                     if parent_link:
                         href = parent_link.get('href', '')
                         if href.startswith('http') and 'bocadolobo' not in href.lower():
-                            website = href
+                            if not self._is_internal_profile_url(href):
+                                website = href
+                                break
+                            website = website or href
                             break
             
             if website and not website.startswith('http'):
                 from urllib.parse import urljoin
                 website = urljoin(self.base_url, website)
+            
+            # Resolve real homepage when current website is a directory profile URL
+            email = None
+            resolve_homepage = self.config.get('resolve_homepage_from_profile', True)
+            if website and resolve_homepage and self._is_internal_profile_url(website):
+                resolved_homepage, resolved_email = self._resolve_homepage_from_profile(website)
+                website = resolved_homepage or ''
+                if resolved_email:
+                    email = resolved_email
             
             # Extract phone
             phone = self._extract_text(listing_soup, self.selectors.get('phone', ''))
@@ -654,9 +756,8 @@ class DirectoryScraper(BaseScraper):
             # Extract specialty if available
             specialty = self._extract_text(listing_soup, self.selectors.get('specialty', ''))
             
-            # If website is available, try to get more details
-            email = None
-            if website:
+            # If we don't have email yet, try to get it from the (resolved) website
+            if not email and website:
                 email = self._try_extract_email_from_detail_page(website)
             
             designer = Designer(

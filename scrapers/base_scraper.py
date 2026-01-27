@@ -107,7 +107,14 @@ class BaseScraper(ABC):
         # Single selector string
         try:
             element = soup.select_one(str(selector))
-            return element.get_text(strip=True) if element else default
+            if element:
+                return element.get_text(strip=True)
+            # When soup is the element itself (e.g. a heading passed as listing), select_one finds nothing
+            if hasattr(soup, 'name') and soup.name:
+                sel = str(selector).strip().lower()
+                if sel == soup.name.lower():
+                    return soup.get_text(strip=True) if hasattr(soup, 'get_text') else default
+            return default
         except Exception:
             return default
     

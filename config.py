@@ -276,6 +276,231 @@ WEBSITE_CONFIGS = {
             ],
         }
     },
+    'archello': {
+        'base_url': 'https://archello.com',
+        'list_url': 'https://archello.com/news/25-best-architecture-firms-in-new-york-city',
+        'rate_limit': 2.0,
+        'output_file': 'output/archello_results.csv',
+        'requires_js': True,  # News/article pages often need JS; set False if plain HTTP works
+        'selectors': {
+            # Article list: numbered entries like "1. Diller Scofidio + Renfro", "2. Skidmore, Owings & Merrill"
+            'listing': [
+                'article',
+                'div[class*="article"]',
+                'div[class*="content"]',
+                'div[class*="entry"]',
+                'section',
+                'div[class*="firm"]',
+                'div[class*="news"]',
+                'li',
+            ],
+            'name': [
+                'h2',
+                'h3',
+                'h4',
+                'strong',
+                '[class*="title"]',
+                '[class*="firm"]',
+                '[class*="name"]',
+                'h2 a',
+                'h3 a',
+            ],
+            'website': [
+                'a[href^="http"]',
+                'a[href*="www"]',
+                'a[href*="archello.com/firms"]',
+                '[class*="website"] a',
+                '[class*="url"] a',
+            ],
+            'phone': [
+                'a[href^="tel:"]',
+                '[class*="phone"]',
+                '[class*="tel"]',
+            ],
+            'email': [
+                'a[href^="mailto:"]',
+                '[class*="email"]',
+            ],
+            'address': [
+                '[class*="address"]',
+                '[class*="location"]',
+            ],
+            'specialty': [
+                'p',
+                '[class*="description"]',
+                '[class*="content"]',
+            ],
+        }
+    },
+    'inven': {
+        'base_url': 'https://www.inven.ai',
+        'list_url': 'https://www.inven.ai/company-lists/top-21-residential-construction-companies-in-new-york',
+        'rate_limit': 2.0,
+        'output_file': 'output/inven_results.csv',
+        'requires_js': True,  # Modern SaaS list page; set False if plain HTTP works
+        'selectors': {
+            # List: "1. The Beechwood Organization|Beechwood Homes NY & Carolinas", "2. Forbes Capretto Homes", etc.
+            'listing': [
+                'article',
+                'div[class*="content"]',
+                'div[class*="list"]',
+                'div[class*="company"]',
+                'section',
+                'li',
+                'div[class*="entry"]',
+                'div[class*="item"]',
+            ],
+            'name': [
+                'h2',
+                'h3',
+                'h4',
+                'strong',
+                '[class*="title"]',
+                '[class*="company-name"]',
+                '[class*="name"]',
+                'h2 a',
+                'h3 a',
+            ],
+            'website': [
+                'a[href^="http"]',
+                'a[href*="www"]',
+                '[class*="website"] a',
+                '[class*="url"] a',
+            ],
+            'phone': [
+                'a[href^="tel:"]',
+                '[class*="phone"]',
+                '[class*="tel"]',
+            ],
+            'email': [
+                'a[href^="mailto:"]',
+                '[class*="email"]',
+            ],
+            'address': [
+                '[class*="address"]',
+                '[class*="location"]',
+                '[class*="headquarter"]',
+                '[class*="headquarters"]',
+            ],
+            'city': [
+                '[class*="city"]',
+            ],
+            'state': [
+                '[class*="state"]',
+            ],
+            'specialty': [
+                'p',
+                '[class*="description"]',
+                '[class*="content"]',
+            ],
+        }
+    },
+    'architecturaldigest': {
+        'base_url': 'https://www.architecturaldigest.com',
+        'list_url': 'https://www.architecturaldigest.com/story/new-york-builders-and-contractors-we-love-from-the-ad-pro-directory',
+        'rate_limit': 2.0,
+        'output_file': 'output/architecturaldigest_results.csv',
+        'requires_js': True,
+        'selectors': {
+            'listing': [
+                'article',
+                'div[class*="article"]',
+                'div[class*="content"]',
+                'div[class*="entry"]',
+                'section',
+                'div[class*="story"]',
+                'li',
+            ],
+            'name': [
+                'h2',
+                'h3',
+                'h4',
+                'strong',
+                '[class*="title"]',
+                '[class*="name"]',
+                'h2 a',
+                'h3 a',
+            ],
+            'website': [
+                'a[href^="http"]',
+                'a[href*="www"]',
+                '[class*="website"] a',
+                '[class*="url"] a',
+            ],
+            'phone': [
+                'a[href^="tel:"]',
+                '[class*="phone"]',
+                '[class*="tel"]',
+            ],
+            'email': [
+                'a[href^="mailto:"]',
+                '[class*="email"]',
+            ],
+            'address': [
+                '[class*="address"]',
+                '[class*="location"]',
+            ],
+            'specialty': [
+                'p',
+                '[class*="description"]',
+                '[class*="content"]',
+            ],
+        }
+    },
+    'architizer': {
+        'base_url': 'https://architizer.com',
+        'list_url': 'https://architizer.com/blog/inspiration/collections/best-nyc-architecture-firms/',
+        'rate_limit': 2.0,
+        'output_file': 'output/architizer_results.csv',
+        'requires_js': True,
+        'selectors': {
+            'listing': [
+                'article',
+                'div[class*="article"]',
+                'div[class*="content"]',
+                'div[class*="entry"]',
+                'section',
+                'div[class*="collections"]',
+                'li',
+            ],
+            'name': [
+                'h2',
+                'h3',
+                'h4',
+                'strong',
+                '[class*="title"]',
+                '[class*="firm"]',
+                '[class*="name"]',
+                'h2 a',
+                'h3 a',
+            ],
+            'website': [
+                'a[href^="http"]',
+                'a[href*="www"]',
+                'a[href*="architizer.com/firms"]',
+                '[class*="website"] a',
+                '[class*="url"] a',
+            ],
+            'phone': [
+                'a[href^="tel:"]',
+                '[class*="phone"]',
+                '[class*="tel"]',
+            ],
+            'email': [
+                'a[href^="mailto:"]',
+                '[class*="email"]',
+            ],
+            'address': [
+                '[class*="address"]',
+                '[class*="location"]',
+            ],
+            'specialty': [
+                'p',
+                '[class*="description"]',
+                '[class*="content"]',
+            ],
+        }
+    },
     # Add more website configurations here
     # Example template:
     # 'website_name': {
