@@ -185,12 +185,26 @@ WEBSITE_CONFIGS = {
     'rethinkingthefuture': {
         'base_url': 'https://www.re-thinkingthefuture.com',
         'list_url': 'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/',
+        # Explicit page URLs to scrape (no pagination). When set, list_url/pagination are ignored.
+        'list_urls': [
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/2/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/3/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/4/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/5/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/6/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/7/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/8/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/9/',
+            'https://www.re-thinkingthefuture.com/top-architects/top-architecture-firms-architects-in-new-york/10/',
+            # Add more URLs as needed, e.g. /3/, /4/, ...
+        ],
         'rate_limit': 2.0,
         'output_file': 'output/rethinkingthefuture_results.csv',  # Custom output file
         'requires_js': True,  # This site blocks automated requests, use Selenium
         'headless': False,  # Run visible browser to reduce block detection
         'stealth': True,  # Use Chrome flags to look less like automation
         'use_undetected': True,  # Use undetected-chromedriver to evade bot/block pages
+        'delay_between_pages': 30,  # Seconds between list_urls (when using list_urls)
         # 'proxy': 'http://host:port',  # Optional: use a proxy for different IP (no VPN); e.g. free/paid proxy
         'pagination': {
             'enabled': True,

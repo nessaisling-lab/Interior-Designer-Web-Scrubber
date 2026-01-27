@@ -485,6 +485,15 @@ class SeleniumHelper:
             return BeautifulSoup(page_source, 'html.parser')
         return None
     
+    def get_current_url(self) -> Optional[str]:
+        """Return the URL the browser is currently on (for verification)."""
+        if self.driver:
+            try:
+                return self.driver.current_url
+            except Exception:
+                return None
+        return None
+    
     def close(self):
         """Close the browser driver."""
         if self.driver:

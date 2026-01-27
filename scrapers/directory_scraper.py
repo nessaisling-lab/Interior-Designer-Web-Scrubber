@@ -37,24 +37,89 @@ class DirectoryScraper(BaseScraper):
         self.config = config
         self.search_url_template = config.get('search_url_template', '')
         self.list_url = config.get('list_url', '')  # For curated list pages
+        self.list_urls = config.get('list_urls', [])  # Explicit list of page URLs to scrape (no pagination)
         self.selectors = config.get('selectors', {})
         self.requires_js = config.get('requires_js', False)  # Whether JavaScript rendering is needed
         self.pagination = config.get('pagination', {})  # Pagination config for list URLs
         self.selenium_helper = None
         self._page_results = []  # Store individual page results for separate export
     
-    def scrape(self, search_query: Optional[str] = None, max_results: Optional[int] = None) -> List[Designer]:
+    def scrape(self, search_query: Optional[str] = None, max_results: Optional[int] = None, single_url: Optional[str] = None) -> List[Designer]:
         """
         Scrape designers from the directory.
         
         Args:
             search_query: Search query (e.g., "interior designer") - ignored if list_url is set
             max_results: Maximum number of results
+            single_url: If set, scrape only this one URL (CLI override; ignores list_urls for this run)
             
         Returns:
             List of Designer objects
         """
         designers = []
+        
+        # One run = one URL (CLI --url override), or explicit list_urls
+        urls = []
+        if single_url and str(single_url).strip():
+            urls = [str(single_url).strip()]
+            logger.info(f"Single-URL mode (CLI override): scraping 1 page: {urls[0]}")
+        elif self.list_urls:
+            urls = [u.strip() for u in self.list_urls if isinstance(u, str) and u.strip()]
+        
+        # Explicit list of page URLs to scrape (no pagination; parse each URL individually)
+        # Restart browser after each page so the next URL gets a fresh session (avoids site keeping us on same page)
+        if urls:
+            if not single_url:
+                logger.info(f"Scraping {len(urls)} page(s) from list_urls (fresh browser per page)")
+            else:
+                logger.info(f"Scraping single URL (CLI --url override)")
+            delay_sec = 0 if single_url else (self.config.get('delay_between_pages', self.pagination.get('delay_between_pages', 0)) or 0)
+            for i, page_url in enumerate(urls):
+                if i > 0 and delay_sec > 0:
+                    logger.info(f"Waiting {delay_sec}s before next page...")
+                    time.sleep(delay_sec)
+                # Fresh driver for each URL so we don't reuse a session that may be stuck
+                if self.requires_js:
+                    if self.selenium_helper:
+                        self.selenium_helper.close()
+                        self.selenium_helper = None
+                    headless = self.config.get('headless', True)
+                    stealth = self.config.get('stealth', False)
+                    use_undetected = self.config.get('use_undetected', False)
+                    proxy = self.config.get('proxy')
+                    self.selenium_helper = SeleniumHelper(
+                        headless=headless, wait_time=15, stealth=stealth,
+                        use_undetected=use_undetected, proxy=proxy
+                    )
+                logger.info(f"[VERIFY] Fetching URL #{i + 1} of {len(urls)} (exact URL passed to browser): {page_url}")
+                if self.requires_js:
+                    soup = self._fetch_page_with_selenium(page_url, timeout=20)
+                else:
+                    soup = self._fetch_page(page_url)
+                if soup:
+                    if self.requires_js and self.selenium_helper:
+                        landed = self.selenium_helper.get_current_url()
+                        if landed:
+                            logger.info(f"[VERIFY] Browser current_url after load: {landed}")
+                            if landed.rstrip('/') != page_url.rstrip('/'):
+                                logger.warning(f"[VERIFY] MISMATCH: requested {page_url} but landed on {landed}")
+                        else:
+                            logger.info(f"[VERIFY] Could not read browser current_url")
+                    page_designers = self._scrape_list_page(soup, max_results=None, source_url=page_url)
+                    if self._is_block_page_result(page_designers):
+                        logger.warning(f"Page appears to be block/access-denied, skipping entries")
+                        page_designers = []
+                    designers.extend(page_designers)
+                    logger.info(f"Page {i + 1}/{len(urls)}: {len(page_designers)} designers (total so far: {len(designers)})")
+                else:
+                    logger.warning(f"Failed to fetch {page_url}")
+                if self.selenium_helper:
+                    self.selenium_helper.close()
+                    self.selenium_helper = None
+            if max_results and len(designers) > max_results:
+                designers = designers[:max_results]
+                logger.info(f"Trimmed to max_results={max_results}")
+            return designers
         
         # Check if this is a direct list URL or search-based
         if self.list_url:

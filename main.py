@@ -18,7 +18,8 @@ def scrape_all_sources(
     sources: Optional[List[str]] = None,
     search_query: Optional[str] = None,
     max_results: Optional[int] = None,
-    output_file: Optional[str] = None
+    output_file: Optional[str] = None,
+    single_url: Optional[str] = None
 ) -> List[Designer]:
     """
     Scrape designers from all configured sources.
@@ -28,14 +29,22 @@ def scrape_all_sources(
         search_query: Search query to use
         max_results: Maximum results per source
         output_file: Output CSV file path
+        single_url: If set, scrape only this one URL (requires exactly one source via --sources)
         
     Returns:
         List of all scraped Designer objects
     """
     all_designers = []
     
-    # Determine which sources to scrape
-    sources_to_scrape = sources if sources else list(config.WEBSITE_CONFIGS.keys())
+    # When --url is used, require exactly one source (that source's config is used for the single URL)
+    if single_url and single_url.strip():
+        if not sources or len(sources) != 1:
+            logger.error("When using --url, you must specify exactly one source with --sources (e.g. --sources rethinkingthefuture --url \"https://...\")")
+            return all_designers
+        sources_to_scrape = sources
+        logger.info(f"Single-URL mode: scraping one URL using source '{sources_to_scrape[0]}'")
+    else:
+        sources_to_scrape = sources if sources else list(config.WEBSITE_CONFIGS.keys())
     
     logger.info(f"Starting scrape from {len(sources_to_scrape)} source(s)")
     
@@ -51,9 +60,13 @@ def scrape_all_sources(
             # Create scraper instance
             scraper = DirectoryScraper(source_config)
             
-            # Perform scrape
+            # Perform scrape (single_url overrides list_urls when set)
             query = search_query or config.SEARCH_QUERIES[0]
-            designers = scraper.scrape(search_query=query, max_results=max_results)
+            designers = scraper.scrape(
+                search_query=query,
+                max_results=max_results,
+                single_url=single_url.strip() if single_url and single_url.strip() else None
+            )
             
             logger.info(f"Found {len(designers)} designers from {source_name}")
             
@@ -141,6 +154,13 @@ def main():
         action='store_true',
         help='Append to existing CSV file instead of overwriting'
     )
+    parser.add_argument(
+        '--url',
+        type=str,
+        default=None,
+        metavar='URL',
+        help='Single URL to scrape for this run (overrides list_urls). Requires exactly one --sources, e.g. --sources rethinkingthefuture --url "https://.../3/"'
+    )
     
     args = parser.parse_args()
     
@@ -159,12 +179,13 @@ def main():
     max_results = args.max_results or config.GLOBAL_CONFIG.get('default_max_results')
     
     try:
-        # Scrape all sources
+        # Scrape all sources (pass --url for one-run-one-URL mode)
         designers = scrape_all_sources(
             sources=args.sources,
             search_query=args.query,
             max_results=max_results,
-            output_file=output_file
+            output_file=output_file,
+            single_url=args.url
         )
         
         # Export to CSV
