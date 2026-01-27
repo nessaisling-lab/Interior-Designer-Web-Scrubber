@@ -86,10 +86,8 @@ def scrape_all_sources(
                 else:
                     # Single file export (no pagination or single page)
                     exporter = CSVExporter(source_output_file)
-                    import os
-                    file_exists = os.path.exists(source_output_file)
-                    exporter.export(designers, append=file_exists, deduplicate=True)
-                    logger.info(f"Exported {len(designers)} designers from {source_name} to {source_output_file} ({'appended' if file_exists else 'created new'})")
+                    exporter.export(designers, append=False, deduplicate=True)
+                    logger.info(f"Exported {len(designers)} designers from {source_name} to {source_output_file}")
             else:
                 # Add to combined list for main output file
                 all_designers.extend(designers)
